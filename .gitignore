@@ -216,3 +216,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Week 0 raw captures — unscrubbed, never committed
+data/captures/raw/
