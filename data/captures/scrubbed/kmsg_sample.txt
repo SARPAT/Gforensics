@@ -25,7 +25,7 @@
 6,24,0,-;Hypervisor detected: KVM
 6,25,0,-;kvm-clock: Using msrs 4b564d01 and 4b564d00
 6,26,0,-;kvm-clock: using sched offset of 8354716946 cycles
-6,27,2,-;clocksource: kvm-clock: mask: 0xffffffffffffffff max_cycles: 0x1cd42e4dffb, max_idle_ns: CONTAINERID00 ns
+6,27,2,-;clocksource: kvm-clock: mask: 0xffffffffffffffff max_cycles: 0x1cd42e4dffb, max_idle_ns: 881590591483 ns
 6,28,4,-;tsc: Detected 2449.998 MHz processor
 7,29,912,-;e820: update [mem 0x00000000-0x00000fff] usable ==> reserved
 7,30,915,-;e820: remove [mem 0x000a0000-0x000fffff] usable
