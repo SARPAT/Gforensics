@@ -133,7 +133,7 @@ not by itself evidence of a fault.
 4-minute fp16 GEMM loop (16384², 6900 iterations): throttle reasons 0x1 GpuIdle → 0x0 none → 0x4 SwPowerCap → 0x1
 temperature 32 °C → 76 °C
 power 48 W → 437 W (cap 400 W)
-SM clock 210 → 1410 MHz   
+SM clock 210 → 1410 MHz 
 A complete idle→active→throttle→cooldown transition. This is the
 grounding trace for the thermal/power failure class.
 
@@ -153,3 +153,124 @@ Not obtainable on this platform:
 
 These require a 2+ GPU host with active NVLink and are deferred to a
 follow-up capture session.
+# Session 2 — Multi-GPU capture (Modal, 2× A100-SXM4-80GB)
+
+Run to close the gaps left by Session 1: multi-GPU topology, active
+NVLink, and a real NCCL trace. Partially successful — the sandbox
+blocks more than expected, but the failures are themselves findings.
+
+## Environment
+
+| Field | Value |
+|---|---|
+| Date | 2026-09-17 |
+| Platform | Modal (`modal shell --gpu a100-80gb:2 --pty`), gVisor sandbox |
+| GPU | 2× NVIDIA A100-SXM4-80GB |
+| Driver | 580.95.05, CUDA 13.0 |
+| NCCL | 2.30.7+cuda13.3 |
+| Interconnect | 12 NVLinks per GPU @ 25 GB/s, direct (no NVSwitch) |
+
+Blocked by the sandbox: `dmesg`, `sysctl`, `/sys/bus/pci/devices/`,
+Docker (so no dcgm-exporter, no `dcgmi`).
+
+## Artifacts
+
+| File | What it grounds |
+|---|---|
+| `modal_probe.txt` | `nvidia-smi`, `nvlink -s`, `nvlink -c` |
+| `modal_topo.txt` | `topo -m` failure mode |
+| `modal_nvml_nvlink_state.txt` | Per-link state + peer PCI query |
+| `modal_nvml_nvlink_errors.txt` | Per-link error counter query |
+| `modal_nccl_debug_min.txt` | Filtered NCCL trace (220 lines) |
+| `modal_nccl_debug_head.txt` | Raw NCCL init phase (173 lines) |
+
+## Findings
+
+### 11. Thermal thresholds are device-reported, not universal
+NVML on the Session-1 A100 returned slowdown 89 °C, shutdown 92 °C;
+PCIe max gen4 ×16, current gen4 ×16; remapped rows `(0,0,0,0)`.
+
+**Consequence:** read thresholds from the device. Never hardcode a
+temperature limit. PCIe degradation is `current < max`, a comparison
+that needs both fields.
+
+### 12. NVLink peer identity is masked under virtualization
+All 24 links reported `state=1` (active), but
+`nvmlDeviceGetNvLinkRemotePciInfo` returned the sentinel
+`FFFFFFFF:FF:FF.0` for every link.
+
+**Consequence:** the topology builder must handle "link active, peer
+unknown". Peer discovery cannot be assumed to succeed; fall back to
+declared configuration.
+
+### 13. NVLink error counters return NotSupported, not zero
+`nvmlDeviceGetNvLinkErrorCounter` raised `NVMLError_NotSupported` for
+CRC_FLIT, CRC_DATA, REPLAY and RECOVERY on all 24 links — while
+`nvidia-smi nvlink -s` simultaneously reported all links up at 25 GB/s.
+
+**Consequence:** this is the third independent instance of the
+measured-absent vs not-measured distinction (see Findings 2 and 3).
+A diagnoser reading these as zero would conclude "NVLink healthy,
+therefore the NCCL timeout is a software problem" — confidently wrong,
+and exactly the misleading-symptom case this project targets.
+The three-state event schema is validated empirically, from three
+different sources.
+
+### 14. "Using network Socket" is not evidence of NVLink fallback
+The NCCL log line `Using network Socket` refers to the NET plugin
+selected for *inter-node* transport. With `nNodes 1`, that path is
+never exercised. The actual data path appears elsewhere: 
+Pattern 1, ... nChannels 12, bw 40.0/40.0, type NVL/PIX
+Channel 00/0 : 0[0] -> 1[1] via P2P/CUMEM/read (×24)
+Connected all rings, use ring PXN 0 GDR 1
+
+**Consequence:** transport truth lives in `type NVL/…` and
+`via P2P/…`, not in the NET plugin line. A parser keying on
+"Using network" produces false NVLink-fault diagnoses.
+
+### 15. NVLS multicast availability is a capability, not a fault
+`NVLS multicast support is not available on dev 0/1` — NVLink SHARP
+requires NVSwitch, absent on a directly-linked pair.
+
+**Consequence:** collectives are slower than on an NVSwitch node
+without anything being broken. Judging "is this slow?" requires
+knowing the expected topology.
+
+### 16. NCCL logs are a topology source
+`Channel NN/24 : 0 1`, the `Trees` graph, and `busId 80000 / 80030`
+expose the actual communication topology — recoverable even when
+NVML peer discovery is blocked.
+
+### 17. NCCL silently guesses topology when introspection fails 
+Could not find real path of /sys/class/pci_bus/fffffff/../../fffffff:ff:f
+Could not get device class for NVLink target fffffff:ff:ff.0, assuming NVSwitch
+Could not get speed from /sys/class/net/eth0/speed. Defaulting to 10 Gbps. 
+There is no NVSwitch on this node. NCCL hit the same masked sentinel
+NVML did, assumed a switch, built its graph on that assumption, and
+reported success with no flag in the graph output.
+
+**Consequence:** this qualifies Finding 16. NCCL-derived topology is
+low-confidence whenever `Could not …` / `assuming` / `Defaulting`
+lines are present. Parse them as a confidence qualifier on everything
+downstream.
+
+## NCCL log format (parse targets) 
+modal:36:36 [0] NCCL INFO ...
+^host ^pid:tid ^rank ^level
+
+[2026-09-17 10:33:34] modal:36:36 [0] misc/ibvwrap.cc:185 NCCL WARN ...
+^WARN lines carry a timestamp and source:line; INFO lines do not 
+
+Useful fields: `busId` (entity join key), `nNodes` / `localRanks`
+(scope), `type NVL/PIX` (transport), `via P2P/CUMEM/read` (data path),
+`Init timings - ...` (per-phase latency, a slow-init diagnostic),
+`Destroy COMPLETE` (clean shutdown vs abort).
+
+## Still outstanding
+
+Requires bare metal with root:
+
+- Real Xid line format in `dmesg`
+- Populated NVLink error counters
+- A working `nvidia-smi topo -m` matrix
+- NVSwitch / fabric-manager telemetry
