@@ -274,3 +274,15 @@ Requires bare metal with root:
 - Populated NVLink error counters
 - A working `nvidia-smi topo -m` matrix
 - NVSwitch / fabric-manager telemetry
+
+## Provider constraint on longitudinal capture
+
+Each `modal shell` invocation lands on a different physical host —
+GPU UUIDs differed between two runs minutes apart with an identical
+`--gpu` spec. Nothing captured from an ephemeral-sandbox provider can
+be correlated across sessions.
+
+This rules out more than convenience: entity history, precursor
+windows and lemon-node signals all require the same node observed over
+time. Those need bare metal with persistent identity, not just root
+access.
