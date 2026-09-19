@@ -22,7 +22,6 @@ for f in "$SRC"/*; do
     -e 's/commId 0x[0-9a-f]+/commId 0xCOMMID/g' \
     -e 's/Hostname="[0-9a-f]{12}"/Hostname="node-000"/g' \
     -e 's/\b[0-9a-f]{64}\b/CONTAINERIDLONG/g' \
-    -e 's/(^|[^-0-9a-f])[0-9a-f]{12}([^-0-9a-f]|$)/\1CONTAINERID00\2/g' \
     -e 's/GPU-[0-9a-fA-F-]{8}-[0-9a-zA-Z-]*/GPU-00000000-0000-0000-0000-000000000000/g' \
     -e 's/"serial_num" : "[0-9]+"/"serial_num" : "0000000000000"/g' \
     -e 's/(Serial Number[[:space:]]*:[[:space:]]*)[0-9]+/\10000000000000/g' \
