@@ -286,3 +286,51 @@ This rules out more than convenience: entity history, precursor
 windows and lemon-node signals all require the same node observed over
 time. Those need bare metal with persistent identity, not just root
 access.
+
+### 18. NUMA affinity is unavailable, and NCCL proceeds anyway
+NCCL INFO Topology detection: could not read
+/sys/devices/system/node/node4294967295/cpumap, using empty affinity 
+
+`4294967295` is `0xFFFFFFFF`, `(uint32) -1` — the kernel's "no NUMA
+node" sentinel. NCCL could not resolve it, substituted empty affinity,
+and logged the substitution at INFO level.
+
+This is the sixth instance of the same pattern, and the fourth distinct
+vocabulary for it:
+
+| Finding | Source | How "unknown" is expressed |
+|---|---|---|
+| 2 | dcgm-exporter | field silently absent |
+| 3 | DCGM counters | reads 0, never measured |
+| 12 | NVML | peer PCI = `FFFFFFFF:FF:FF.0` |
+| 13 | NVML | raises `NotSupported` |
+| 17 | NCCL | "assuming NVSwitch" |
+| 18 | NCCL | "using empty affinity" |
+
+**Consequence:** Findings 17 and 18 differ in one useful respect. F17
+guesses silently; F18 *states* its substitution. Phrases of the form
+"using empty/default X" are a greppable admission that X was never
+measured, and belong in the NCCL parser as `NOT_MEASURED` markers
+rather than being discarded as INFO noise.
+
+### A hazard specific to preparing captures for publication
+
+Two scrubber rules, added in good faith, destroyed telemetry: 
+0x[12+ hex] -> 0xADDR killed clocks_event_reasons
+(Finding 3's evidence)
+
+[0-9a-f]{12} catchall killed node4294967295
+(Finding 18's evidence) 
+
+This is not coincidence. Sentinel values *look like* identifiers —
+all-Fs, max-uint, long hex runs — so the exact values this project
+exists to detect are the ones a naive scrubber targets.
+
+An audit of the second rule found it matched **zero** real container
+IDs across all 21 artifacts (those are caught by the dedicated
+`Hostname="<12hex>"` rule) while damaging four telemetry sites. It was
+removed rather than narrowed: a rule that fires only on telemetry is
+worse than no rule.
+
+**Rule for future scrubbing:** sentinel values are telemetry, not
+identifiers. Audit what a rule actually matches before adding it.

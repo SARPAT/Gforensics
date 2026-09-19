@@ -161,8 +161,8 @@ modal:36:36 [0] NCCL INFO Could not find real path of /sys/class/pci_bus/0000:80
 modal:37:50 [0] NCCL INFO RAS handling connInitAck from 10.0.0.1<58021> (nack 0)
 modal:37:37 [1] NCCL INFO Could not find real path of /sys/class/pci_bus/0000:80/../../0000:80:03.0
 modal:37:50 [0] NCCL INFO RAS established connection with 10.0.0.1<58021> (sendQ empty, experiencingDelays 0, startRetryTime 0.00s)
-modal:37:37 [1] NCCL INFO Topology detection: could not read /sys/devices/system/node/noCONTAINERID00/cpumap, using empty affinity
-modal:36:36 [0] NCCL INFO Topology detection: could not read /sys/devices/system/node/noCONTAINERID00/cpumap, using empty affinity
+modal:37:37 [1] NCCL INFO Topology detection: could not read /sys/devices/system/node/node4294967295/cpumap, using empty affinity
+modal:36:36 [0] NCCL INFO Topology detection: could not read /sys/devices/system/node/node4294967295/cpumap, using empty affinity
 modal:37:37 [1] NCCL INFO Could not find real path of /sys/class/pci_bus/fffffff/../../fffffff:ff:f
 modal:37:37 [1] NCCL INFO Could not get device class for NVLink target fffffff:ff:ff.0, assuming NVSwitch
 modal:37:37 [1] NCCL INFO TOPO/NET : Importing network plugins to topology
