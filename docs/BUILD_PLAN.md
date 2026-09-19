@@ -1,9 +1,10 @@
 # Gforensics — The Build Plan
 
 ```text
-VERSION   v3 — standalone
+VERSION   v3.1
 WRITTEN   2026-09-19
-AGAINST   repo 7e931b6
+AGAINST   repo 4eb6bcd
+REVISED   after step 0.1 landed on main
 STATUS    DISCUSSION DOCUMENT
           not agreed, not committed
 ```
@@ -302,8 +303,8 @@ get right.
 # 3. Where we are today
 
 ```text
-REPO   github.com/SARPAT/Gforensics @ 7e931b6
-       7 commits · ZERO lines of Python
+REPO   github.com/SARPAT/Gforensics @ 4eb6bcd
+       9 commits · ZERO lines of Python
 ```
 
 ```text
@@ -314,9 +315,9 @@ LICENSE (Apache-2.0)          causal-kb/**
 .gitignore                    simulator/**
 scripts/scrub_captures.sh     eval/**
 data/captures/scrubbed/       CI workflows
-  19 telemetry files          pyproject.toml
+  21 telemetry files          pyproject.toml
   sessions 1 and 2            docs/**
-  findings 1–17               dashboard/
+  findings 1–18               dashboard/
 ```
 
 ```text
@@ -331,13 +332,15 @@ agent boundaries fixed ✓        session 2
 eval axes A1–A4 fixed ✓         Modal
 repo structure drafted ✓        2× A100-80GB
                                 driver 580.95.05
-                              findings 1–17 ✓
-                              scrubbing verified ✓
+                              findings 1–18 ✓
+                              scrubber audited,
+                                fixed, reproducible
+                                on both machines ✓
 
                               Week 0 Day 2 ⬜
                               Tier-1 mining
-                              IN FLIGHT, 6 items
-                              awaiting your call
+                              GT-1 SETTLED
+                              GT-2..GT-5 + N open
 ```
 
 **The honest summary.** The thinking is a long way ahead of the code,
@@ -386,58 +389,79 @@ what day it is. See Appendix A, change C1, for why.
 
 | # | Step | Owner |
 |---|---|---|
-| 0.1 | Fix the `scrub_captures.sh` container-ID rule, regenerate captures | [C→S] |
+| 0.1 | ✅ **DONE** — scrubber audited and fixed, captures regenerated | [S] |
 | 0.2 | Commit the context doc as `docs/PROJECT_CONTEXT.md` | [C] |
 | 0.3 | Correct two defects in that doc before committing | [C→S] |
 | 0.4 | Decide the six Tier-1 gating items | [S] |
 | 0.5 | Mine Tier-1, split at mine time, label by hand | [S→C] |
 | 0.6 | Repo skeleton: `pyproject.toml`, ruff, mypy, pytest, CI | [C] |
 
-## 5.2 On 0.1 — the scrubber defect 🔴
+## 5.2 On 0.1 — ✅ done, and what it taught
+
+Landed on `main` as `ede3ede` + `4eb6bcd`, by Saransh, before this plan
+was written. Recorded here because the METHOD is worth carrying, not
+because the step is outstanding.
 
 ```text
-THE RULE
-  s/(^|[^-0-9a-f])[0-9a-f]{12}([^-0-9a-f]|$)/…/g
+WHAT THE AUDIT FOUND
+  the [0-9a-f]{12} catchall matched ZERO real
+  container IDs across all 21 artifacts, while
+  damaging four telemetry sites
 
-It matches ANY 12-character hex run, so it is
-eating real telemetry in four places:
-
-  proc_nvidia_gpus.txt      DMA Mask
-  kmsg_sample.txt           max_idle_ns
-  modal_nccl_debug_head     ×2
-
-THE WORST ONE
-  /sys/devices/system/node/node4294967295/cpumap
-                           ↓
-  /sys/devices/system/node/noCONTAINERID00/cpumap
-
-  4294967295 = 0xFFFFFFFF = (uint32) −1
-             = the "no NUMA node" sentinel
+  → REMOVED, not narrowed
+  → node4294967295, DMA Mask 0x7fffffffffff and
+    the clocks_event_reasons transition restored
+  → one script now reproduces all 21 artifacts
+    on both machines (15/15 + 6/6)
+  → Finding 18 came out of the recovery
 ```
 
-⚠ That is the same all-ones-means-unknown pattern as Finding 12, from a
-third source. It arguably deserves a number of its own as Finding 18 —
-your call, since findings are your record.
+```text
+TWO RULES, NOT ONE, HAD DESTROYED EVIDENCE
 
-The script's own header says *"scrubbing is deliberately NARROW;
-telemetry values must survive untouched."* So this is a defect against
-a stated contract, not a tradeoff. Two of the four hits have been
-present since `7908dd3`.
+  0x[12+ hex] → 0xADDR      killed
+                            clocks_event_reasons
+                            (Finding 3's evidence)
+
+  [0-9a-f]{12} catchall     killed node4294967295
+                            (Finding 18's evidence)
+```
+
+🔴 **The hazard generalises, and it is a design constraint, not a
+scrubbing footnote.**
 
 ```text
-FIX DIRECTION — needs your call
-  A  require ≥1 a–f character
-     ✓ kills the pure-decimal false positive
-     ✗ a real container ID can be all digits
-  B  anchor to where container IDs actually
-     appear (the Hostname label, cgroup paths)
-     ✓ precise
-     ✗ more rules to maintain
-  C  both
+Sentinel values LOOK LIKE identifiers.
+  all-Fs · max-uint · long hex runs
 
-  My recommendation: C. The cases are cheap
-  and the cost of a silent corruption is a
-  capture file nobody trusts.
+So the exact values this project exists to
+detect are the ones a naive scrubber — or a
+naive NORMALIZER — targets.
+
+  0xFFFFFFFF        "no NUMA node"
+  FFFFFFFF:FF:FF.0  NVML unknown peer
+  4294967295        (uint32) -1
+
+A normalizer that sanitises these has silently
+converted NOT_MEASURED into absent or zero,
+which is the one error this architecture is
+built to avoid.
+```
+
+→ This becomes a **test** in B1, not a README rule. See §6.2.
+
+```text
+METHOD NOTE, carried forward
+
+  A defect hunt in another thread found the
+  12-hex rule and stopped there. The 0xADDR
+  rule was in the same class and was walked
+  past.
+
+  WHEN AUDITING: after the first hit, ask what
+  ELSE is wrong in the same class. One defect
+  of a kind is evidence of a KIND, not of a
+  defect.
 ```
 
 ## 5.3 On 0.3 — two defects in the context doc
@@ -445,16 +469,24 @@ FIX DIRECTION — needs your call
 ```text
 DEFECT 1 — §14 counts FOUR instances of
   measured-absent vs not-measured.
-  Your README counts THREE (findings 2, 3, 13).
 
-  ✓ THE README IS RIGHT.
-    §14 gets to four by adding Finding 17, but
-    17 is topology FABRICATED and reported as
-    fact — a different failure mode from a
-    signal going silent.
+  ✗ I PREVIOUSLY SAID "THREE, AND THE README IS
+    RIGHT". That is wrong too — it was written
+    against a stale README.
 
-  → fix the doc to match the README,
-    not the reverse
+  ✅ THE CURRENT README IS SHARPER THAN EITHER:
+    SIX instances across FOUR distinct
+    vocabularies for "unknown"
+
+      2   dcgm-exporter  field silently absent
+      3   DCGM counters  reads 0, never measured
+      12  NVML           peer PCI FFFFFFFF:FF:FF.0
+      13  NVML           raises NotSupported
+      17  NCCL           "assuming NVSwitch"
+      18  NCCL           "using empty affinity"
+
+  → fix the doc to match the README's TABLE,
+    not to any single count
 
 DEFECT 2 — §15 says nobody publishes on
   rule-out reasoning, while citing Meta as the
@@ -551,7 +583,7 @@ cannot be delegated to me.**
 |---|---|---|
 | A1 | Seed: ECC + NVLink | `classes/ecc.yaml`, `classes/nvlink.yaml` |
 | A2 | Remaining six classes | `classes/{pcie,gpu-off-bus,thermal-power,nccl,driver-cuda,scheduler-node-health}.yaml` |
-| A3 | XID signal catalog | `signals/xid.yaml`, `signals/dcgm-fields.yaml`, `signals/job-signals.yaml` |
+| A3 | XID signal catalog + NCCL admission phrases | `signals/xid.yaml`, `signals/dcgm-fields.yaml`, `signals/job-signals.yaml` |
 | A4 | Remediation vocabulary | `remediation/actions.yaml` |
 
 ### Why A1 comes first and is only two classes
@@ -656,7 +688,7 @@ pretending to uniform confidence.
 
 | # | Step | Produces | Depends on |
 |---|---|---|---|
-| B1 | Pydantic schemas | `src/gfd/schemas/` + `causal-kb/schema.json` | A1 |
+| B1 | Pydantic schemas + **sentinel-survival test** | `src/gfd/schemas/`, `src/gfd/ingestion/normalizer.py` + `causal-kb/schema.json` | A1 |
 | B2 | Layer 1 topology graph | `src/gfd/graph/` | B1 |
 | B3 | Simulator core | `simulator/{fleet,topology_gen,workload_gen,telemetry_gen}.py` | B1 |
 | B4 | Scenario engine | `simulator/scenarios/`, `simulator/perturbations/` | B3, A2 |
@@ -679,6 +711,34 @@ Diagnosis    cause, confidence, evidence[],
 Outcome      designed NOW even though unused
              until v3 — retrofitting is
              impossible (Decision 10)
+```
+
+### B1 also ships the sentinel-survival test
+
+Direct consequence of the scrubber hazard in §5.2. This is the first
+test written in the project, before the first schema is used in anger.
+
+```text
+FEED EACH SENTINEL FORM THROUGH THE NORMALIZER
+  0xFFFFFFFF
+  FFFFFFFF:FF:FF.0
+  4294967295
+  NVMLError_NotSupported
+  a field that is simply ABSENT
+  "using empty affinity"
+  "assuming NVSwitch"
+
+ASSERT each arrives as NOT_MEASURED
+
+  ✗ NOT as zero
+  ✗ NOT as absent
+  ✗ NOT sanitised into a placeholder
+
+Two scrubber rules already made exactly this
+mistake on exactly these values. A normalizer
+is the same kind of code doing the same kind
+of pattern-match, and it runs on every event
+forever.
 ```
 
 ### B4 — the isolation guard goes in HERE, not later
@@ -1023,6 +1083,15 @@ Finding 4   the Hostname label is the container
 Finding 13  NVMLError_NotSupported on all 24
             NVLink links
             → NOT_MEASURED, not zero
+
+Finding 18  "using empty affinity" — NCCL STATES
+            its substitution, where Finding 17
+            guesses silently
+            → "using empty/default X" is a
+              GREPPABLE admission that X was
+              never measured. Parse it as
+              NOT_MEASURED, do not discard it
+              as INFO noise.
 
 Finding 14  "Using network Socket" with 12
             NVLinks active
