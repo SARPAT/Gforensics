@@ -27,6 +27,7 @@ for f in "$SRC"/*; do
     -e 's/"serial_num" : "[0-9]+"/"serial_num" : "0000000000000"/g' \
     -e 's/(Serial Number[[:space:]]*:[[:space:]]*)[0-9]+/\10000000000000/g' \
     -e 's/172\.[0-9]+\.[0-9]+\.[0-9]+/10.0.0.1/g' \
+    -e 's/\b[0-9]{1,3}-[0-9]{1,3}-[0-9]{1,3}-[0-9]{1,3}\b/node-000/g' \
     -e 's/UUID=[0-9a-f]{8}-[0-9a-f-]{27}/UUID=00000000-0000-0000-0000-000000000000/g' \
     -e 's#/teamspace/studios/this_studio#/home/gfuser#g' \
     -e 's/\b[a-z]+[0-9]{2}b[0-9]{10}\b/gfuser/g' \
